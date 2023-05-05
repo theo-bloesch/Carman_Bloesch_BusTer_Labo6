@@ -5,7 +5,7 @@
 #define DATA_SIZE 1024
 #define ADDRESS_TEXT_SIZE 128
 // Definir le port 
-#define PORT_NUMBER 27598
+#define PORT_NUMBER 2759855
 int main()
 {
 	WSADATA info;
