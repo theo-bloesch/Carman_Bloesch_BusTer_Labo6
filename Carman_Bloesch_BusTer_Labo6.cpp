@@ -191,7 +191,7 @@ int main()
 	char data_to_send[DATA_SIZE];
 	int quit;
 	char received_data[DATA_SIZE];
-	int received_data_size, status;
+	int received_data_size{}, status;
 	// Initialisation Winsock 2 - spécifique à Windows
 	WSAStartup(MAKEWORD(2, 2), &info);
 	// Créer le socket UDP
