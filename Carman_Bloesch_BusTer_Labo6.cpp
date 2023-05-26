@@ -109,6 +109,7 @@ enum MessageType {
 
 void SetMessage(char* Message, MessageType messageType, char messageNum, char dataLength, void* data)
 {
+	char controlSum = 0;
 	
 	Message[0] = messageType;
 	Message[1] = messageNum;
@@ -118,16 +119,13 @@ void SetMessage(char* Message, MessageType messageType, char messageNum, char da
 	{
 		Message[3 + i] = ((UINT8*)data)[i];
 	}
-
-	char controlSum = 0;
+	
 	for (int i = 0; i < dataLength+3 ; i++)
 	{
 		controlSum += Message[i];
 	}
+	
 	Message[3 + dataLength] = controlSum;
-	
-	
-	
 }
 
 int wait_received(SOCKET socket, long timeout_milliseconds)
@@ -150,7 +148,7 @@ int wait_received(SOCKET socket, long timeout_milliseconds)
 }
 
 
-void SendMessagel(UDP_CONNECTION Connection,char Message[],int dataLength)
+void SendMessagel(UDP_CONNECTION Connection,char Message[],int dataLength)//char *response recuperer la réponse
 {
 	
 		// Envoyer les données
@@ -192,13 +190,11 @@ void SendMessagel(UDP_CONNECTION Connection,char Message[],int dataLength)
 		{
 			Connection.received_data[Connection.received_data_size] = '\0';
 			printf("Reponse recue:%s\n", Connection.received_data);
-			for (int i = 0; i < Connection.received_data_size - 1; i++)
+			/*for (int i = 0; i < Connection.received_data_size - 1; i++)
 			{
 				std::cout << Connection.received_data[i];
 			}
-			std::cout << std::endl;
-
-
+			std::cout << std::endl;*/
 		}
 		else
 			printf("Erreur de reception\n");
@@ -288,7 +284,7 @@ void ManagerManuelMenu(UDP_CONNECTION Connection) {
 			std::cout << dataLength << std::endl;
 			break; // Home
 		case '8': 
-			bool status = true;
+			
 			data[0] = htonl(Pick_X);
 			data[1] = htonl(Pick_Y);
 			data[2] = htonl(Pick_Z+10000);
@@ -297,15 +293,6 @@ void ManagerManuelMenu(UDP_CONNECTION Connection) {
 			data[5] = htonl(Pick_Rz);
 			messageType = COM_ROBOT_MOVE;
 			dataLength = 24;
-			while (status)
-			{
-				
-				messageType = COM_ROBOT_IS_MOVING;
-				
-				SetMessage(Message, messageType, messageNum, dataLength, &data);
-				SendMessagel(Connection, Message, 4);
-				
-			}
 			
 			
 			break; // Pick
@@ -370,14 +357,6 @@ void ManagerUserMenu(UDP_CONNECTION Connection) {
 	} while (chosenMenu != '6');
 }
 
-
-
-
-
-
-
-
-
 int main()
 {
 	MessageType messageType;
@@ -392,14 +371,7 @@ int main()
 	// Gérer la communication
 
 	char Message[105] = { 0 };
-	/*do
-	{*/
-		// Saisie des données à envoyer
-		/*printf("Message a envoyer:");
-		fgets(data_to_send, sizeof data_to_send, stdin);
-		data_to_send[strlen(data_to_send) - 1] = '\0';
-		quit = strcmp(data_to_send, "quit") == 0;*/
-		//
+	
 		ManagerUserMenu(udpConnection);
 		
 	//	if (!quit)
