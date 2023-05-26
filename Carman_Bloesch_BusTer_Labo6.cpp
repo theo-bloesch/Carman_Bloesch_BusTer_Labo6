@@ -107,7 +107,7 @@ enum MessageType {
 	REP_PRESENCE = 0x61
 };
 
-void SetMessage(char* Message, MessageType messageType, char messageNum, char dataLength, char* data)
+void SetMessage(char* Message, MessageType messageType, char messageNum, char dataLength, void* data)
 {
 	//Message = (char*)malloc((dataLength+3) * sizeof(char));
 	/*if (Message == NULL)
@@ -121,7 +121,7 @@ void SetMessage(char* Message, MessageType messageType, char messageNum, char da
 	Message[2] = dataLength;
 	for (int i = 0; i < dataLength; i++)
 	{
-		Message[3 + i] = data[i];
+		Message[3 + i] = ((char*)data)[i];
 	}
 	//memcpy(&Message[3], data, sizeof(data));
 	char controlSum = 0;
@@ -281,12 +281,12 @@ void ManagerManuelMenu(UDP_CONNECTION Connection) {
 		case '6': break; // show presence piece
 		case '7': 
 			
-			data[0] = HOME_X;
-			data[1] = HOME_Y;
-			data[2] = HOME_Z;
-			data[3] = HOME_Rx;
-			data[4] = HOME_Ry;
-			data[5] = HOME_Rz;
+			data[0] = htonl(HOME_X);
+			data[1] = htonl(HOME_Y);
+			data[2] = htonl(HOME_Z);
+			data[3] = htonl(HOME_Rx);
+			data[4] = htonl(HOME_Ry);
+			data[5] = htonl(HOME_Rz);
 			/*data[0] = htonl(HOME_X);
 			data[1] = htonl(HOME_X)>>8;
 			data[2] = htonl(HOME_X)>>16;
@@ -334,7 +334,7 @@ void ManagerManuelMenu(UDP_CONNECTION Connection) {
 		}
 		if (chosenMenu != 'q'&&!invalidChoice)//Attention verfifier que l'on est rentré dans le switch case!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		{
-			SetMessage(Message, messageType, messageNum, dataLength, (char*)data);
+			SetMessage(Message, messageType, messageNum, dataLength, &data);
 			SendMessagel(Connection, Message);
 		}
 	} while (chosenMenu != 'q');
