@@ -109,28 +109,23 @@ enum MessageType {
 
 void SetMessage(char* Message, MessageType messageType, char messageNum, char dataLength, void* data)
 {
-	//Message = (char*)malloc((dataLength+3) * sizeof(char));
-	/*if (Message == NULL)
-	{
-		std::cout << "Error" << std::endl;
-		return;
-	}*/
 	
 	Message[0] = messageType;
 	Message[1] = messageNum;
 	Message[2] = dataLength;
+	
 	for (int i = 0; i < dataLength; i++)
 	{
-		Message[3 + i] = ((char*)data)[i];
+		Message[3 + i] = ((UINT8*)data)[i];
 	}
-	//memcpy(&Message[3], data, sizeof(data));
+
 	char controlSum = 0;
 	for (int i = 0; i < dataLength+3 ; i++)
 	{
 		controlSum += Message[i];
 	}
 	Message[3 + dataLength] = controlSum;
-	Message[3 + dataLength+1] = '\0';
+	
 	
 }
 
@@ -245,7 +240,7 @@ void ManagerManuelMenu(UDP_CONNECTION Connection) {
 	char chosenMenu;
 	char Message[105] = {0};
 	//char* Message=NULL;
-	int data[100] = { 0 };
+	INT32 data[100] = { 0 };
 	//char* data = NULL;
 	
 	int messageNum = 1;
