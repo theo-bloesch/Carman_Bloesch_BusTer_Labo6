@@ -127,6 +127,7 @@ void SetMessage(char* Message, MessageType messageType, char messageNum, char da
 	Message[3 + dataLength] = controlSum;
 	
 	
+	
 }
 
 int wait_received(SOCKET socket, long timeout_milliseconds)
@@ -149,7 +150,7 @@ int wait_received(SOCKET socket, long timeout_milliseconds)
 }
 
 
-void SendMessagel(UDP_CONNECTION Connection,char Message[])
+void SendMessagel(UDP_CONNECTION Connection,char Message[],int dataLength)
 {
 	
 		// Envoyer les données
@@ -172,7 +173,7 @@ void SendMessagel(UDP_CONNECTION Connection,char Message[])
 		//std::cout <<"Taille du Message : " << strlen(Message) << std::endl;
 		//Attention strlen va jusqu'au /0
 		status = sendto(Connection.socket_client,
-			Message, strlen(Message), 0,
+			Message, dataLength, 0,
 			(struct sockaddr*)&Connection.server_address,
 			sizeof Connection.server_address);
 
@@ -282,40 +283,32 @@ void ManagerManuelMenu(UDP_CONNECTION Connection) {
 			data[3] = htonl(HOME_Rx);
 			data[4] = htonl(HOME_Ry);
 			data[5] = htonl(HOME_Rz);
-			/*data[0] = htonl(HOME_X);
-			data[1] = htonl(HOME_X)>>8;
-			data[2] = htonl(HOME_X)>>16;
-			data[3] = htonl(HOME_X) >> 24;
-			
-			data[4] = htonl(HOME_Y);
-			data[5] = htonl(HOME_Y) >> 8;
-			data[6] = htonl(HOME_Y) >> 16;
-			data[7] = htonl(HOME_Y) >> 24;
-			
-			data[8] = htonl(HOME_Z);
-			data[9] = htonl(HOME_Z) >> 8;
-			data[10] = htonl(HOME_Z) >> 16;
-			data[11] = htonl(HOME_Z) >> 24;
-			
-			data[12] = htonl(HOME_Z);
-			data[13] = htonl(HOME_Z) >> 8;
-			data[14] = htonl(HOME_Z) >> 16;
-			data[15] = htonl(HOME_Z) >> 24;
-			
-			data[16] = htonl(HOME_Z);
-			data[17] = htonl(HOME_Z) >> 8;
-			data[18] = htonl(HOME_Z) >> 16;
-			data[19] = htonl(HOME_Z) >> 24;
-			
-			data[20] = htonl(HOME_Z);
-			data[21] = htonl(HOME_Z) >> 8;
-			data[22] = htonl(HOME_Z) >> 16;
-			data[23] = htonl(HOME_Z) >> 24;*/
 			messageType = COM_ROBOT_MOVE;
 			dataLength = 24;
 			std::cout << dataLength << std::endl;
 			break; // Home
-		case '8': break; // Pick
+		case '8': 
+			bool status = true;
+			data[0] = htonl(Pick_X);
+			data[1] = htonl(Pick_Y);
+			data[2] = htonl(Pick_Z+10000);
+			data[3] = htonl(Pick_Rx);
+			data[4] = htonl(Pick_Ry);
+			data[5] = htonl(Pick_Rz);
+			messageType = COM_ROBOT_MOVE;
+			dataLength = 24;
+			while (status)
+			{
+				
+				messageType = COM_ROBOT_IS_MOVING;
+				
+				SetMessage(Message, messageType, messageNum, dataLength, &data);
+				SendMessagel(Connection, Message, 4);
+				
+			}
+			
+			
+			break; // Pick
 		case '9': break; // Place
 		case '10': break; // show mouvement
 		case 'q': 
@@ -329,8 +322,9 @@ void ManagerManuelMenu(UDP_CONNECTION Connection) {
 		}
 		if (chosenMenu != 'q'&&!invalidChoice)//Attention verfifier que l'on est rentré dans le switch case!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		{
+			
 			SetMessage(Message, messageType, messageNum, dataLength, &data);
-			SendMessagel(Connection, Message);
+			SendMessagel(Connection, Message,dataLength+4);
 		}
 	} while (chosenMenu != 'q');
 }
