@@ -123,6 +123,7 @@ void SetMessage(char* Message, MessageType messageType, char messageNum, char da
 	{
 		Message[3 + i] = data[i];
 	}
+	//memcpy(&Message[3], data, sizeof(data));
 	char controlSum = 0;
 	for (int i = 0; i < dataLength+3 ; i++)
 	{
@@ -165,12 +166,15 @@ void SendMessagel(UDP_CONNECTION Connection,char Message[])
 		//Message = (char*)malloc((dataLength + 3) * sizeof(char));
 
 		//SetMessage(Message, COM_CONVEYOR, 1, dataLength, &data);
-		std::cout << std::to_string(Message[0]) << std::endl;
-		std::cout << std::to_string(Message[1]) << std::endl;
-		std::cout << std::to_string(Message[2]) << std::endl;
-		std::cout << std::to_string(Message[3]) << std::endl;
-		std::cout << std::to_string(Message[4]) << std::endl;
-		std::cout << strlen(Message) << std::endl;
+		//std::cout <<"Type de Message : " << std::to_string(Message[0]) << std::endl;
+		//std::cout <<"Numero de message : " << std::to_string(Message[1]) << std::endl;
+		//std::cout <<"Longueur des donnees : " << std::to_string(Message[2]) << std::endl;
+		//for(int i=3;i<3+Message[2];i++)
+		//{
+		//	std::cout << "Donnees : " << std::to_string(Message[i]) << std::endl;
+		//}
+		//std::cout <<"checksum : " << std::to_string(Message[Message[2]+4]) << std::endl;
+		//std::cout <<"Taille du Message : " << strlen(Message) << std::endl;
 		//Attention strlen va jusqu'au /0
 		status = sendto(Connection.socket_client,
 			Message, strlen(Message), 0,
@@ -241,7 +245,7 @@ void ManagerManuelMenu(UDP_CONNECTION Connection) {
 	char chosenMenu;
 	char Message[105] = {0};
 	//char* Message=NULL;
-	char data[100] = { 0 };
+	int data[100] = { 0 };
 	//char* data = NULL;
 	
 	int messageNum = 1;
@@ -276,14 +280,45 @@ void ManagerManuelMenu(UDP_CONNECTION Connection) {
 			break; // vacuum off
 		case '6': break; // show presence piece
 		case '7': 
+			
 			data[0] = HOME_X;
 			data[1] = HOME_Y;
 			data[2] = HOME_Z;
-			data[3] = HOME_Rx; 
+			data[3] = HOME_Rx;
 			data[4] = HOME_Ry;
 			data[5] = HOME_Rz;
+			/*data[0] = htonl(HOME_X);
+			data[1] = htonl(HOME_X)>>8;
+			data[2] = htonl(HOME_X)>>16;
+			data[3] = htonl(HOME_X) >> 24;
+			
+			data[4] = htonl(HOME_Y);
+			data[5] = htonl(HOME_Y) >> 8;
+			data[6] = htonl(HOME_Y) >> 16;
+			data[7] = htonl(HOME_Y) >> 24;
+			
+			data[8] = htonl(HOME_Z);
+			data[9] = htonl(HOME_Z) >> 8;
+			data[10] = htonl(HOME_Z) >> 16;
+			data[11] = htonl(HOME_Z) >> 24;
+			
+			data[12] = htonl(HOME_Z);
+			data[13] = htonl(HOME_Z) >> 8;
+			data[14] = htonl(HOME_Z) >> 16;
+			data[15] = htonl(HOME_Z) >> 24;
+			
+			data[16] = htonl(HOME_Z);
+			data[17] = htonl(HOME_Z) >> 8;
+			data[18] = htonl(HOME_Z) >> 16;
+			data[19] = htonl(HOME_Z) >> 24;
+			
+			data[20] = htonl(HOME_Z);
+			data[21] = htonl(HOME_Z) >> 8;
+			data[22] = htonl(HOME_Z) >> 16;
+			data[23] = htonl(HOME_Z) >> 24;*/
 			messageType = COM_ROBOT_MOVE;
-			dataLength = 6;
+			dataLength = 24;
+			std::cout << dataLength << std::endl;
 			break; // Home
 		case '8': break; // Pick
 		case '9': break; // Place
@@ -299,7 +334,7 @@ void ManagerManuelMenu(UDP_CONNECTION Connection) {
 		}
 		if (chosenMenu != 'q'&&!invalidChoice)//Attention verfifier que l'on est rentré dans le switch case!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		{
-			SetMessage(Message, messageType, messageNum, dataLength, data);
+			SetMessage(Message, messageType, messageNum, dataLength, (char*)data);
 			SendMessagel(Connection, Message);
 		}
 	} while (chosenMenu != 'q');
