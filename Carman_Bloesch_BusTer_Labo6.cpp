@@ -4,6 +4,8 @@
 #include <WS2tcpip.h>
 #include <iostream>
 #include <string>
+#include <stdlib.h>
+#include <iomanip>
 #define DATA_SIZE 1024
 #define ADDRESS_TEXT_SIZE 128
 
@@ -44,17 +46,17 @@ typedef struct
 	int ConnectionError;
 	const char* ConnectionErrorDescription;
 	UINT8 MessageCount;
-	
+
 } UDP_CONNECTION;
 
 void UdpInit(UDP_CONNECTION* Connection, const char* ServerAddressText)
 {
 	// Initialisation Winsock 2 - spécifique à Windows
 	WSAStartup(MAKEWORD(2, 2), &info);
-	
+
 	// Preparer la structure avec l'adresse et le port de destination
 	memset(&Connection->server_address, 0, sizeof Connection->server_address);
-	
+
 	// Initialiser la connection
 	Connection->ConnectionError = 0;
 	Connection->ConnectionErrorDescription = NULL;
@@ -72,8 +74,9 @@ void UdpInit(UDP_CONNECTION* Connection, const char* ServerAddressText)
 	// Initialiser l'adresse du serveur
 	Connection->server_address.sin_family = AF_INET;
 	Connection->server_address.sin_port = htons(PORT_NUMBER);
-	inet_pton(AF_INET, "127.0.0.1", &Connection->server_address.sin_addr);
-	
+
+	inet_pton(AF_INET, ServerAddressText, &Connection->server_address.sin_addr);
+
 	//Autoriser la diffusion restreinte
 	int value = 1;
 	setsockopt(Connection->socket_client, SOL_SOCKET, SO_BROADCAST, (char*)&value, sizeof(value));
@@ -104,28 +107,19 @@ enum MessageType {
 	COM_ROBOT_IS_MOVING = 0x42,
 	REP_ROBOT_IS_MOVING = 0x43,
 	COM_PRESENCE = 0x60,
-	REP_PRESENCE = 0x61
+	REP_PRESENCE = 0x61,
+	COM_TEST_ERROR = 0x01
 };
 
-void SetMessage(char* Message, MessageType messageType, char messageNum, char dataLength, void* data)
+UINT8 UdpCheckSum(UINT8* buffer, int length)
 {
-	char controlSum = 0;
-	
-	Message[0] = messageType;
-	Message[1] = messageNum;
-	Message[2] = dataLength;
-	
-	for (int i = 0; i < dataLength; i++)
+	UINT8 checkSum = 0;
+	int i;
+	for (i = 0; i < length; i++)
 	{
-		Message[3 + i] = ((UINT8*)data)[i];
+		checkSum += buffer[i];
 	}
-	
-	for (int i = 0; i < dataLength+3 ; i++)
-	{
-		controlSum += Message[i];
-	}
-	
-	Message[3 + dataLength] = controlSum;
+	return checkSum;
 }
 
 int wait_received(SOCKET socket, long timeout_milliseconds)
@@ -147,60 +141,283 @@ int wait_received(SOCKET socket, long timeout_milliseconds)
 	return status > 0;
 }
 
-
-void SendMessagel(UDP_CONNECTION Connection,char Message[],int dataLength)//char *response recuperer la réponse
+void UdpClearReceptionBuffer(UDP_CONNECTION* connection)
 {
-	
-		// Envoyer les données
-		int status = 0;
-		/*char data = 1;
-		char dataLength = 1;
-		*/
-		//char* Message = NULL;
-		//Message = (char*)malloc((dataLength + 3) * sizeof(char));
+	char message[105];
+	int length = 0;
+	struct sockaddr_in address;
+	while (wait_received(connection->socket_client, 0))
+	{
+		recvfrom(connection->socket_client, message, sizeof connection->received_data, 0,
+			(struct sockaddr*)&address, &length);
+	}
+}
 
-		//SetMessage(Message, COM_CONVEYOR, 1, dataLength, &data);
-		//std::cout <<"Type de Message : " << std::to_string(Message[0]) << std::endl;
-		//std::cout <<"Numero de message : " << std::to_string(Message[1]) << std::endl;
-		//std::cout <<"Longueur des donnees : " << std::to_string(Message[2]) << std::endl;
-		//for(int i=3;i<3+Message[2];i++)
-		//{
-		//	std::cout << "Donnees : " << std::to_string(Message[i]) << std::endl;
-		//}
-		//std::cout <<"checksum : " << std::to_string(Message[Message[2]+4]) << std::endl;
-		//std::cout <<"Taille du Message : " << strlen(Message) << std::endl;
-		//Attention strlen va jusqu'au /0
-		status = sendto(Connection.socket_client,
-			Message, dataLength, 0,
-			(struct sockaddr*)&Connection.server_address,
-			sizeof Connection.server_address);
+void SendMessageU(UDP_CONNECTION* connection, MessageType messageType, UINT8 dataLength, void* data)
+{
+	char controlSum = 0;
+	UINT8 Message[105] = { 0 };
+	Message[0] = messageType;
+	Message[1] = connection->MessageCount++;
+	Message[2] = dataLength;
 
-		// Recevoir les données et l'adresse de l'émetteur
-		long timeout_milliseconds = 1000;
-		if (wait_received(Connection.socket_client, timeout_milliseconds) > 0)
+	for (int i = 0; i < dataLength; i++)
+	{
+		Message[3 + i] = ((UINT8*)data)[i];
+	}
+
+	controlSum = (UINT8)UdpCheckSum(Message, dataLength + 3);
+
+	Message[3 + dataLength] = controlSum;
+
+	int status = 0;
+	status = sendto(connection->socket_client,
+		(char*)Message, dataLength + 4, 0,				//+4 pour messageType,Message count, dataLength et controlSum
+		(struct sockaddr*)&connection->server_address,
+		sizeof connection->server_address);
+
+	// Recevoir les données et l'adresse de l'émetteur
+	//long timeout_milliseconds = 1000;
+	//if (wait_received(connection->socket_client, timeout_milliseconds) > 0)
+	//{
+	//	connection->response_source_address_length = sizeof connection->response_source_address;
+	//	connection->received_data_size = recvfrom(connection->socket_client,
+	//		connection->received_data, sizeof connection->received_data, 0,
+	//		(struct sockaddr*)&connection->response_source_address,
+	//		&connection->response_source_address_length);
+	//}
+	//// Traiter les données de la réponse
+	//if (connection->received_data_size >= 0)
+	//{
+
+	//	printf("Reponse recue:%s\n", connection->received_data);
+	//	for (int i = 0; i < connection->received_data_size - 1; i++)
+	//	{
+	//		std::cout << std::hex << (int)connection->received_data[i];
+	//	}
+	//	std::cout << std::endl;
+	//}
+	//else
+	//{
+	//	printf("Erreur de reception\n");
+	//}
+}
+
+int  ReceiveMessage(UDP_CONNECTION* connection, MessageType messageType)
+{
+	// Recevoir les données et l'adresse de l'émetteur
+	long timeout_milliseconds = 10000;
+	if (wait_received(connection->socket_client, timeout_milliseconds) > 0)
+	{
+		connection->response_source_address_length = sizeof connection->response_source_address;
+		connection->received_data_size = recvfrom(connection->socket_client,
+			connection->received_data, sizeof connection->received_data, 0,
+			(struct sockaddr*)&connection->response_source_address,
+			&connection->response_source_address_length);
+	}
+	// Traiter les données de la réponse
+	if (connection->received_data_size >= 0 && connection->received_data[0] == messageType + 1)//Controler checksum
+	{
+
+
+		//printf("Reponse recue:%s\n", connection->received_data);
+		/*for (int i = 0; i < connection->received_data_size - 1; i++)
 		{
-			Connection.response_source_address_length = sizeof Connection.response_source_address;
-			Connection.received_data_size = recvfrom(Connection.socket_client,
-				Connection.received_data, sizeof Connection.received_data - 1, 0,
-				(struct sockaddr*)&Connection.response_source_address,
-				&Connection.response_source_address_length);
+			std::cout << std::hex << (int)connection->received_data[i];
 		}
-		// Traiter les données de la réponse
-		if (Connection.received_data_size >= 0)
+		std::cout << std::endl;*/
+
+		return 1;
+
+	}
+	else if (connection->received_data_size >= 0 && connection->received_data[0] == 0x10)
+	{
+		printf("Erreur:%s\n", connection->received_data);
+		return 0;
+	}
+	else
+	{
+		printf("Erreur de reception\n");
+		connection->ConnectionError = 1;
+		return 0;
+	}
+
+}
+
+int UdpReceiveMessage(UDP_CONNECTION* connection, void* receiveData, int* receiveDataLength)
+{
+	int addressOriginalSize;
+	int status, i;
+	UINT8 reception[105];
+
+	if (wait_received(connection->socket_client, 500))
+	{
+		addressOriginalSize = sizeof connection->server_address;
+		status = recvfrom(connection->socket_client, (char*)reception, 105, 0,
+			(struct sockaddr*)&connection->server_address, &addressOriginalSize);
+		if (UdpCheckSum(reception, status) == reception[status - 1])
 		{
-			Connection.received_data[Connection.received_data_size] = '\0';
-			printf("Reponse recue:%s\n", Connection.received_data);
-			/*for (int i = 0; i < Connection.received_data_size - 1; i++)
+			if ((receiveData != NULL) && (receiveDataLength != NULL))
 			{
-				std::cout << Connection.received_data[i];
+				*receiveDataLength = (int)reception[2];
+				for (i = 0; i < reception[2]; i++)
+					((UINT8*)receiveData)[i] = reception[i + 3];
 			}
-			std::cout << std::endl;*/
+			return 1;
 		}
 		else
-			printf("Erreur de reception\n");
-	
-	
+		{
+			connection->ConnectionError = 1;
+			connection->ConnectionErrorDescription = "CONERROR_BAD_CHECKSUM";
+			return 2;
+		}
+	}
+	else
+		return 0;
 }
+
+void SendReceive(UDP_CONNECTION* connection, MessageType messageType, UINT8 dataLength, void* data)
+{
+	int attempts = 0;
+
+	if (!connection->ConnectionError)
+	{
+		while (attempts < 3)
+		{
+			attempts++;
+			SendMessageU(connection, messageType, dataLength, (void*)data);
+			if (ReceiveMessage(connection, messageType))
+			{
+				break;
+			}
+		}
+		if (attempts >= 3)
+		{
+			if (connection->received_data_size != NULL)
+				connection->received_data_size = 0;
+			connection->ConnectionError = 1;
+			connection->ConnectionErrorDescription = "CONERROR_RECEIVE_TIMEOUT";
+		}
+	}
+
+}
+
+
+
+
+
+
+void SendMessagel(UDP_CONNECTION* Connection, UINT8 Message[], int dataLength)//char *response recuperer la réponse
+{
+
+	int status = 0;
+	status = sendto(Connection->socket_client,
+		(char*)Message, dataLength, 0,
+		(struct sockaddr*)&Connection->server_address,
+		sizeof Connection->server_address);
+
+	// Recevoir les données et l'adresse de l'émetteur
+	long timeout_milliseconds = 3000;
+	if (wait_received(Connection->socket_client, timeout_milliseconds) > 0)
+	{
+		Connection->response_source_address_length = sizeof Connection->response_source_address;
+		Connection->received_data_size = recvfrom(Connection->socket_client,
+			Connection->received_data, sizeof Connection->received_data, 0,
+			(struct sockaddr*)&Connection->response_source_address,
+			&Connection->response_source_address_length);
+	}
+	// Traiter les données de la réponse
+	if (Connection->received_data_size >= 0)
+	{
+
+		printf("Reponse recue:%s\n", Connection->received_data);
+		for (int i = 0; i < Connection->received_data_size - 1; i++)
+		{
+			std::cout << std::hex << (int)Connection->received_data[i];
+		}
+		std::cout << std::endl;
+	}
+	else
+		printf("Erreur de reception\n");
+
+
+}
+//void UdpSendReceive(UDP_CONNECTION* connection, char commandNumber, void* data, int dataLength, void* receiveData, int* receiveDataLength)
+//{
+//	int attempts = 0;
+//
+//	if (!connection->ConnectionError)
+//	{
+//		while (attempts < 3)
+//		{
+//			attempts++;
+//			UdpSendMessage(connection, commandNumber, (void*)data, dataLength);
+//			if (UdpReceiveMessage(connection, receiveData, receiveDataLength))
+//				break;
+//		}
+//		if (attempts >= 3)
+//		{
+//			if (receiveDataLength != NULL)
+//				*receiveDataLength = 0;
+//			connection->ConnectionError = 1;
+//			connection->ConnectionErrorDescription = "CONERROR_RECEIVE_TIMEOUT";
+//		}
+//	}
+//}
+
+void UdpSendMessage(UDP_CONNECTION* connection, char commandNumber, void* data, int dataLength)
+{
+	int attempts = 0;
+	int status = 0;
+	int i, messageLength;
+	UINT8 Message[105] = { 0 };
+
+	char controlSum = 0;
+
+	Message[0] = commandNumber;
+	Message[1] = connection->MessageCount++;
+	Message[2] = dataLength;
+
+	for (int i = 0; i < dataLength; i++)
+	{
+		Message[3 + i] = ((UINT8*)data)[i];
+	}
+
+	controlSum = (UINT8)UdpCheckSum(Message, dataLength + 3);
+
+	Message[3 + dataLength] = controlSum;
+
+	if (!connection->ConnectionError)
+	{
+		UdpClearReceptionBuffer(connection);
+
+		while (attempts < 3)
+		{
+			attempts++;
+			status = sendto(connection->socket_client, (char*)Message, dataLength + 4, 0, (struct sockaddr*)&connection->server_address, sizeof(connection->server_address));
+			if (status)
+				break;
+		}
+		if (attempts >= 3)
+		{
+			connection->ConnectionError = 1;
+			connection->ConnectionErrorDescription = "CONERROR_SEND_TIMEOUT";
+		}
+	}
+}
+
+
+
+
+
+
+
+//void UdpSend(UDP_CONNECTION* connection, char commandNumber, void* data, int dataLength)
+//{
+//	UdpSendReceive(connection, commandNumber, (void*)data, dataLength, NULL, NULL);
+//}
+
+
 
 char ChooseMenuManuel() {
 	char chosenMenu = '0';
@@ -231,87 +448,267 @@ char ChooseMenuManuel() {
 }
 
 
+void RobotConvoyeurOn(UDP_CONNECTION* connection)
+{
+	UINT32 data[6] = { 0 };
+	MessageType messageType = COM_CONVEYOR;
+	int dataLength = 0;
+	data[0] = 1;
+	messageType = COM_CONVEYOR;
+	dataLength = 1;
+	SendReceive(connection, messageType, dataLength, &data);
+
+}
+
+void RobotConvoyeurOff(UDP_CONNECTION* connection)
+{
+	UINT32 data[6] = { 0 };
+	MessageType messageType = COM_CONVEYOR;
+	int dataLength = 0;
+	data[0] = 0;
+	messageType = COM_CONVEYOR;
+	dataLength = 1;
+	SendReceive(connection, messageType, dataLength, &data);
+
+}
+
+void RobotCapteurPallette(UDP_CONNECTION* connection)
+{
+	UINT32 data[6] = { 0 };
+	MessageType messageType = COM_PALLET_SENSOR;
+	int dataLength = 0;
+	data[0] = 0;
+	dataLength = 0;
+	SendReceive(connection, messageType, dataLength, &data);
+	std::cout << std::hex << (int)connection->received_data[3] << std::endl;
+
+}
+
+void RobotVacuumOn(UDP_CONNECTION* connection)
+{
+	UINT32 data[6] = { 0 };
+	MessageType messageType = COM_SET_VACUUM;
+	data[0] = 1;
+	int dataLength = 1;
+	SendReceive(connection, messageType, dataLength, &data);
+
+}
+
+void RobotVacuumOff(UDP_CONNECTION* connection)
+{
+	UINT32 data[6] = { 0 };
+	MessageType messageType = COM_SET_VACUUM;
+	data[0] = 0;
+	int dataLength = 1;
+	SendReceive(connection, messageType, dataLength, &data);
+}
+
+void RobotPresencePiece(UDP_CONNECTION* connection)
+{
+	UINT32 data[6] = { 0 };
+	MessageType messageType = COM_GET_HAS_PIECE;
+	data[0] = 0;
+
+	int dataLength = 0;
+	SendReceive(connection, messageType, dataLength, &data);
+	std::cout << std::hex << (int)connection->received_data[3] << std::endl;
+}
 
 
-void ManagerManuelMenu(UDP_CONNECTION Connection) {
+bool CheckCapteur(UDP_CONNECTION* connection, MessageType messageType, int valueToExit)
+{
+	int attempts = 0;
+	do
+	{
+		UINT32 data[6] = { 0 };
+		data[0] = 0;
+		int dataLength = 0;
+		SendReceive(connection, messageType, dataLength, &data);
+		if (attempts > 10000)
+		{
+			return false;
+		}
+		attempts++;
+	} while (connection->received_data[3] != valueToExit);
+	return true;
+
+}
+
+void RobotPICK(UDP_CONNECTION* connection)
+{
+	/*char data = 1;
+	char dataLength = 1;
+	char* Message = NULL;
+	Message = (char*)malloc((dataLength + 3) * sizeof(char));
+
+
+	SetMessage(Message, COM_ROBOT_GO_HOME, 1, dataLength, &data);
+	SendMessagel(Connection, Message, dataLength + 3);*/
+
+	INT32 data[6] = { 0 };
+	data[0] = htonl(Pick_X);
+	data[1] = htonl(Pick_Y);
+	data[2] = htonl(Pick_Z + 10000);
+	data[3] = htonl(Pick_Rx);
+	data[4] = htonl(Pick_Ry);
+	data[5] = htonl(Pick_Rz);
+	MessageType messageType = COM_ROBOT_MOVE;
+	int dataLength = 24;
+
+	SendReceive(connection, messageType, dataLength, &data);
+	//Sleep(1000);
+
+	if (CheckCapteur(connection, COM_ROBOT_IS_MOVING, 0))
+	{
+		data[0] = htonl(Pick_X);
+		data[1] = htonl(Pick_Y);
+		data[2] = htonl(Pick_Z);
+		data[3] = htonl(Pick_Rx);
+		data[4] = htonl(Pick_Ry);
+		data[5] = htonl(Pick_Rz);
+		messageType = COM_ROBOT_MOVE;
+		dataLength = 24;
+		SendReceive(connection, messageType, dataLength, &data);
+	}
+	CheckCapteur(connection, COM_ROBOT_IS_MOVING, 0);
+}
+
+
+
+void RobotHome(UDP_CONNECTION* connection)
+{
+	INT32 data[6] = { 0 };
+	data[0] = htonl(HOME_X);
+	data[1] = htonl(HOME_Y);
+	data[2] = htonl(HOME_Z);
+	data[3] = htonl(HOME_Rx);
+	data[4] = htonl(HOME_Ry);
+	data[5] = htonl(HOME_Rz);
+	MessageType messageType = COM_ROBOT_MOVE;
+	int dataLength = 24;
+	SendReceive(connection, messageType, dataLength, &data);
+}
+
+void RobotPlace(UDP_CONNECTION* connection)
+{
+	/*char data = 1;
+	char dataLength = 1;
+	char* Message = NULL;
+	Message = (char*)malloc((dataLength + 3) * sizeof(char));
+
+
+	SetMessage(Message, COM_ROBOT_GO_HOME, 1, dataLength, &data);
+	SendMessagel(Connection, Message, dataLength + 3);*/
+
+	INT32 data[6] = { 0 };
+	data[0] = htonl(Place_X);
+	data[1] = htonl(Place_Y);
+	data[2] = htonl(Place_Z + 50000);
+	data[3] = htonl(Place_Rx);
+	data[4] = htonl(Place_Ry);
+	data[5] = htonl(Place_Rz);
+	MessageType messageType = COM_ROBOT_MOVE;
+	int dataLength = 24;
+
+	SendReceive(connection, messageType, dataLength, &data);
+	//Sleep(1000);
+
+	if (CheckCapteur(connection, COM_ROBOT_IS_MOVING, 0))
+	{
+		data[0] = htonl(Place_X);
+		data[1] = htonl(Place_Y);
+		data[2] = htonl(Place_Z);
+		data[3] = htonl(Place_Rx);
+		data[4] = htonl(Place_Ry);
+		data[5] = htonl(Place_Rz);
+		messageType = COM_ROBOT_MOVE;
+		dataLength = 24;
+		SendReceive(connection, messageType, dataLength, &data);
+	}
+	CheckCapteur(connection, COM_ROBOT_IS_MOVING, 0);
+}
+
+void PilotageAutomatiser(UDP_CONNECTION* connection, int nbreCyle)
+{
+	for (int i = 0; i < nbreCyle; i++)
+	{
+
+		RobotPICK(connection);
+		CheckCapteur(connection, COM_GET_HAS_PIECE, 1);
+		//Sleep(100);
+		RobotVacuumOn(connection);
+		//Sleep(100);
+		RobotPlace(connection);
+		//Sleep(100);
+		RobotVacuumOff(connection);
+		//Sleep(100);
+		RobotHome(connection);
+		//Sleep(100);
+		RobotConvoyeurOn(connection);
+		//Sleep(100);
+		if (!CheckCapteur(connection, COM_PALLET_SENSOR, 1))
+		{
+			break;
+		}
+	}
+}
+
+void ManagerManuelMenu(UDP_CONNECTION* Connection) {
 	char chosenMenu;
-	char Message[105] = {0};
+	UINT8 Message[105] = { 0 };
 	//char* Message=NULL;
 	INT32 data[100] = { 0 };
 	//char* data = NULL;
-	
-	int messageNum = 1;
-	int dataLength = 0;
-	MessageType messageType=COM_PRESENCE;
+
+
 	do {
 		bool invalidChoice = false;
+		Connection->ConnectionError = 0;
 		chosenMenu = ChooseMenuManuel();
 		switch (chosenMenu) {
-		case '1': 
-			data[0] = 1;
-			messageType = COM_CONVEYOR;
-			dataLength = 1;
+		case '1':
+			RobotConvoyeurOn(Connection);
 			break; // convoyeur on
-		case '2': 
-			data[0] = 0;
-			messageType = COM_CONVEYOR;
-			dataLength = 1;
+		case '2':
+			RobotConvoyeurOff(Connection);
 			break; // convoyeur off
 		case '3':
-
+			RobotCapteurPallette(Connection);
 			break; // show presence pallette
-		case '4': 
-			data[0] = 1;
-			messageType = COM_SET_VACUUM;
-			dataLength = 1;
+		case '4':
+			RobotVacuumOn(Connection);
 			break; // vacuum On
-		case '5': 
-			data[0] = 0;
-			messageType = COM_SET_VACUUM;
-			dataLength = 1;
+		case '5':
+			RobotVacuumOff(Connection);
 			break; // vacuum off
-		case '6': break; // show presence piece
-		case '7': 
-			
-			data[0] = htonl(HOME_X);
-			data[1] = htonl(HOME_Y);
-			data[2] = htonl(HOME_Z);
-			data[3] = htonl(HOME_Rx);
-			data[4] = htonl(HOME_Ry);
-			data[5] = htonl(HOME_Rz);
-			messageType = COM_ROBOT_MOVE;
-			dataLength = 24;
-			std::cout << dataLength << std::endl;
+		case '6':
+			RobotPresencePiece(Connection);
+			break; // show presence piece
+		case '7':
+			RobotHome(Connection);
 			break; // Home
-		case '8': 
-			
-			data[0] = htonl(Pick_X);
-			data[1] = htonl(Pick_Y);
-			data[2] = htonl(Pick_Z+10000);
-			data[3] = htonl(Pick_Rx);
-			data[4] = htonl(Pick_Ry);
-			data[5] = htonl(Pick_Rz);
-			messageType = COM_ROBOT_MOVE;
-			dataLength = 24;
-			
-			
+		case '8':
+			RobotPICK(Connection);
 			break; // Pick
-		case '9': break; // Place
+		case '9':
+			RobotPlace(Connection);
+			break; // Place
 		case '10': break; // show mouvement
-		case 'q': 
+		case 'q':
 			std::cout << "Quitte le menu des fonctions manuelles" << std::endl;
-			
+
 			break;
-		default: 
+		default:
 			std::cout << "Choix invalide" << std::endl;
 			invalidChoice = true;
-		break;
+			break;
 		}
-		if (chosenMenu != 'q'&&!invalidChoice)//Attention verfifier que l'on est rentré dans le switch case!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+		if (chosenMenu != 'q' && !invalidChoice)//Attention verfifier que l'on est rentré dans le switch case!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		{
-			
-			SetMessage(Message, messageType, messageNum, dataLength, &data);
-			SendMessagel(Connection, Message,dataLength+4);
+
+			/*SendMessageU(&Connection,Message, messageType, dataLength, &data);
+			ReceiveMessage(&Connection);*/
+			//SendReceive(&Connection, messageType, dataLength, &data);
 		}
 	} while (chosenMenu != 'q');
 }
@@ -339,19 +736,54 @@ char ChooseUserMenu() {
 	return chosenMenu;
 }
 
-void ManagerUserMenu(UDP_CONNECTION Connection) {
-	char chosenMenu=0;
+void ManagerUserMenu(UDP_CONNECTION* Connection) {
+	char chosenMenu = 0;
+	int nbreCycle = 0;
+	int choix = 0;
+	INT32 data[6] = { 0 };
 	do {
+		Connection->ConnectionError = 0;
 		chosenMenu = ChooseUserMenu();
 		switch (chosenMenu) {
-		case '1': 
+		case '1':
 			ManagerManuelMenu(Connection);
-			
+
 			break; // Commande manuelle
-		case '2': break; // Pilotage automatisé
-		case '3': break; // Messages d'erreur de communication
-		case '4': break; // Saisie de l'adresse de la machine
-		case '5': break; // Detection par diffusion
+		case '2':
+			std::cout << "Combien de cycle voulez vous effectuer ?" << std::endl;
+			std::cout << '>';
+			std::cin >> nbreCycle;
+			PilotageAutomatiser(Connection, nbreCycle);
+			break; // Pilotage automatisé
+		case '3':
+			std::cout << "Veuillez choisir l'erreur à générer :" << std::endl;
+			std::cin >> choix;
+			switch (choix)
+			{
+			case 0:
+				SendReceive(Connection, COM_TEST_ERROR, 1, data);
+				break;
+			case 1:
+				SendReceive(Connection, COM_CONVEYOR, 10, data);
+				break;
+			default:
+				std::cout << "Mauvais choix try again" << std::endl;
+				break;
+			}
+
+			break; // Messages d'erreur de communication
+		case '4':
+
+			UdpInit(Connection, "127.0.0.255");
+			break; // Saisie de l'adresse de la machine
+		case '5':
+			UdpInit(Connection, "127.0.0.255");
+			SendReceive(Connection, COM_PRESENCE, 0, data);
+			for (int i = 0; i < Connection->received_data_size; i++)
+			{
+				std::cout << std::hex << (int)Connection->received_data[i] << std::endl;
+			}
+			break; // Detection par diffusion
 		case '6': std::cout << "Quitte le menu User" << std::endl; break;
 		}
 	} while (chosenMenu != '6');
@@ -360,20 +792,20 @@ void ManagerUserMenu(UDP_CONNECTION Connection) {
 int main()
 {
 	MessageType messageType;
-	
+
 	char data_to_send[DATA_SIZE];
 	int quit;
 	char received_data[DATA_SIZE];
 	int received_data_size{}, status;
 	UDP_CONNECTION udpConnection;
 	UdpInit(&udpConnection, "127.0.0.1");
-	
+
 	// Gérer la communication
 
 	char Message[105] = { 0 };
-	
-		ManagerUserMenu(udpConnection);
-		
+
+	ManagerUserMenu(&udpConnection);
+
 	//	if (!quit)
 	//	{
 	//		// Envoyer les données
@@ -424,6 +856,6 @@ int main()
 	//			printf("Erreur de reception\n");
 	//	}
 	//} while (!quit);
-	
+
 	UdpStop(&udpConnection);
 }
