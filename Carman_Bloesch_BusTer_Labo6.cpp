@@ -560,6 +560,8 @@ void ManagerUserMenu(UDP_CONNECTION* Connection) {
 			break; // Pilotage automatisé
 		case '3':
 			std::cout << "Veuillez choisir l'erreur à générer :" << std::endl;
+			std::cout << "0. Mauvais type de message :" << std::endl;
+			std::cout << "1. Mauvaise longueur de message :" << std::endl;
 			std::cin >> choix;
 			switch (choix)
 			{
