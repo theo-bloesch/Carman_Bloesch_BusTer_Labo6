@@ -6,6 +6,7 @@
 #include <string>
 #include <stdlib.h>
 #include <iomanip>
+#include <regex>
 #define DATA_SIZE 1024
 #define ADDRESS_TEXT_SIZE 128
 
@@ -175,38 +176,13 @@ void SendMessageU(UDP_CONNECTION* connection, MessageType messageType, UINT8 dat
 		(char*)Message, dataLength + 4, 0,				//+4 pour messageType,Message count, dataLength et controlSum
 		(struct sockaddr*)&connection->server_address,
 		sizeof connection->server_address);
-
-	// Recevoir les données et l'adresse de l'émetteur
-	//long timeout_milliseconds = 1000;
-	//if (wait_received(connection->socket_client, timeout_milliseconds) > 0)
-	//{
-	//	connection->response_source_address_length = sizeof connection->response_source_address;
-	//	connection->received_data_size = recvfrom(connection->socket_client,
-	//		connection->received_data, sizeof connection->received_data, 0,
-	//		(struct sockaddr*)&connection->response_source_address,
-	//		&connection->response_source_address_length);
-	//}
-	//// Traiter les données de la réponse
-	//if (connection->received_data_size >= 0)
-	//{
-
-	//	printf("Reponse recue:%s\n", connection->received_data);
-	//	for (int i = 0; i < connection->received_data_size - 1; i++)
-	//	{
-	//		std::cout << std::hex << (int)connection->received_data[i];
-	//	}
-	//	std::cout << std::endl;
-	//}
-	//else
-	//{
-	//	printf("Erreur de reception\n");
-	//}
+	
 }
 
 int  ReceiveMessage(UDP_CONNECTION* connection, MessageType messageType)
 {
 	// Recevoir les données et l'adresse de l'émetteur
-	long timeout_milliseconds = 10000;
+	long timeout_milliseconds = 1000;
 	if (wait_received(connection->socket_client, timeout_milliseconds) > 0)
 	{
 		connection->response_source_address_length = sizeof connection->response_source_address;
@@ -524,9 +500,11 @@ bool CheckCapteur(UDP_CONNECTION* connection, MessageType messageType, int value
 		data[0] = 0;
 		int dataLength = 0;
 		SendReceive(connection, messageType, dataLength, &data);
+		
 		if (attempts > 10000)
 		{
 			return false;
+			std::cout << "Erreur de communication avec le robot"<<std::endl;
 		}
 		attempts++;
 	} while (connection->received_data[3] != valueToExit);
@@ -544,7 +522,7 @@ void RobotPICK(UDP_CONNECTION* connection)
 
 	SetMessage(Message, COM_ROBOT_GO_HOME, 1, dataLength, &data);
 	SendMessagel(Connection, Message, dataLength + 3);*/
-
+	CheckCapteur(connection, COM_ROBOT_IS_MOVING, 0);
 	INT32 data[6] = { 0 };
 	data[0] = htonl(Pick_X);
 	data[1] = htonl(Pick_Y);
@@ -557,9 +535,9 @@ void RobotPICK(UDP_CONNECTION* connection)
 
 	SendReceive(connection, messageType, dataLength, &data);
 	//Sleep(1000);
-
-	if (CheckCapteur(connection, COM_ROBOT_IS_MOVING, 0))
-	{
+	std::cout << "lalalallalalala" << std::endl;
+	CheckCapteur(connection, COM_ROBOT_IS_MOVING, 0);
+	
 		data[0] = htonl(Pick_X);
 		data[1] = htonl(Pick_Y);
 		data[2] = htonl(Pick_Z);
@@ -568,8 +546,8 @@ void RobotPICK(UDP_CONNECTION* connection)
 		data[5] = htonl(Pick_Rz);
 		messageType = COM_ROBOT_MOVE;
 		dataLength = 24;
-		SendReceive(connection, messageType, dataLength, &data);
-	}
+	SendReceive(connection, messageType, dataLength, &data);
+	
 	CheckCapteur(connection, COM_ROBOT_IS_MOVING, 0);
 }
 
@@ -599,11 +577,11 @@ void RobotPlace(UDP_CONNECTION* connection)
 
 	SetMessage(Message, COM_ROBOT_GO_HOME, 1, dataLength, &data);
 	SendMessagel(Connection, Message, dataLength + 3);*/
-
+	CheckCapteur(connection, COM_ROBOT_IS_MOVING, 0);
 	INT32 data[6] = { 0 };
 	data[0] = htonl(Place_X);
 	data[1] = htonl(Place_Y);
-	data[2] = htonl(Place_Z + 50000);
+	data[2] = htonl(Place_Z + 10000);
 	data[3] = htonl(Place_Rx);
 	data[4] = htonl(Place_Ry);
 	data[5] = htonl(Place_Rz);
@@ -637,12 +615,14 @@ void PilotageAutomatiser(UDP_CONNECTION* connection, int nbreCyle)
 		CheckCapteur(connection, COM_GET_HAS_PIECE, 1);
 		//Sleep(100);
 		RobotVacuumOn(connection);
+		CheckCapteur(connection, COM_PALLET_SENSOR, 1);
 		//Sleep(100);
 		RobotPlace(connection);
 		//Sleep(100);
 		RobotVacuumOff(connection);
 		//Sleep(100);
 		RobotHome(connection);
+		CheckCapteur(connection, COM_ROBOT_IS_MOVING, 0);
 		//Sleep(100);
 		RobotConvoyeurOn(connection);
 		//Sleep(100);
@@ -724,7 +704,7 @@ char ChooseUserMenu() {
 				"3. Messages d'erreur de communication\n" <<
 				"4. Saisie de l'adresse de la machine\n" <<
 				"5. Detection par diffusion\n" <<
-				"6. Quitter le programme\n" <<
+				"9. Quitter le programme\n" <<
 				"Choix > ";
 		}
 		else {
@@ -736,10 +716,30 @@ char ChooseUserMenu() {
 	return chosenMenu;
 }
 
+const char* GetIpAdresse(const char * IpAdresse)
+{
+	char NewIpAdresse[4] = { 0 };
+	char test[128];
+	std::cout << "Entrer l'adresse IP" << std::endl;
+	std::cin >> test;
+	#pragma warning(suppress : 4996);
+	if (sscanf(test, " %c. %c. %c. %c", &NewIpAdresse[0], &NewIpAdresse[1], &NewIpAdresse[2], &NewIpAdresse[3]))
+	{
+		std::cout << "Nouvelle adresse Ip : " << NewIpAdresse[0] << '.' << NewIpAdresse[1] << '.' << NewIpAdresse[2] << '.' << NewIpAdresse[3] << std::endl;
+		return NewIpAdresse;
+	}
+	else
+	{
+		std::cout << "Adresse Ip invalide" << std::endl;
+		return IpAdresse;
+	}
+}
+
 void ManagerUserMenu(UDP_CONNECTION* Connection) {
 	char chosenMenu = 0;
 	int nbreCycle = 0;
 	int choix = 0;
+	Connection->ConnectionError = 0;
 	INT32 data[6] = { 0 };
 	do {
 		Connection->ConnectionError = 0;
@@ -774,19 +774,27 @@ void ManagerUserMenu(UDP_CONNECTION* Connection) {
 			break; // Messages d'erreur de communication
 		case '4':
 
-			UdpInit(Connection, "127.0.0.255");
+			UdpInit(Connection, GetIpAdresse("127.0.0.1"));
 			break; // Saisie de l'adresse de la machine
 		case '5':
 			UdpInit(Connection, "127.0.0.255");
 			SendReceive(Connection, COM_PRESENCE, 0, data);
-			for (int i = 0; i < Connection->received_data_size; i++)
+			printf("Reponse recue:%s\n", Connection->received_data);
+			
+			std::cout << (int)(struct sockaddr*)&Connection->response_source_address;
+			
+			//std::endl;
+			for (int i = 2; i < Connection->received_data_size; i++)
 			{
-				std::cout << std::hex << (int)Connection->received_data[i] << std::endl;
+				std::cout << Connection->received_data[i];
 			}
 			break; // Detection par diffusion
-		case '6': std::cout << "Quitte le menu User" << std::endl; break;
+		case '9': 
+			std::cout << "Quitte le menu User" << std::endl; 
+			exit(0);
+			break;
 		}
-	} while (chosenMenu != '6');
+	} while (chosenMenu != '9');
 }
 
 int main()
